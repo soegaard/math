@@ -87,24 +87,22 @@
 (define make-pdf
   (case-lambda
     ; X ~ t(ν)
-    [(ν)     (cond
-               [(< ν 0)  (raise-argument-error 'student-t-dist "Positive Real" 0 ν)]
-               [else     (define proportionality-constant (/ 1. (* (sqrt ν) (beta 0.5 (/ ν 2.)))))
-                         (: pdf : (PDF Real))
-                         (define (pdf x [log? #f])
-                           (define base (/ ν (+ ν (* x x))))
-                           (define expo (/ (+ 1. ν) 2.))         
-                           (define p (fl (cast (* proportionality-constant (expt base expo)) Real)))               
-                           (if log? (fllog p) p))
-                         pdf])]
+    [(ν)     (let ([ν (fl ν)])
+               (define proportionality-constant (fl/ 1. (* (flsqrt ν) (beta 0.5 (fl/ ν 2.)))))
+               (: pdf : (PDF Real))
+               (define (pdf x [log? #f])
+                 (let ([x (fl x)])
+                   (define base (fl/ ν (fl+ ν (fl* x x))))
+                   (define expo (fl/ (fl+ 1. ν) 2.))         
+                   (define p (fl* proportionality-constant (flexpt base expo)))               
+                   (if log? (fllog p) p)))
+               pdf)]
     ; Y ~ σX+μ
-    [(μ σ ν) (cond
-               [(< ν 0)  (raise-argument-error 'student-t-dist "Positive Real" 0 ν)]
-               [else     (define f (make-pdf ν))
-                         (λ (y [log? #f])
-                           (define x (/ (- y μ) σ))
-                           (define p (/ (f x) σ))
-                           (if log? (fllog p) p))])]))
+    [(μ σ ν) (define f (make-pdf ν))
+             (λ (y [log? #f])
+               (define x (/ (- y μ) σ))
+               (define p (/ (f x) σ))
+               (if log? (fllog p) p))]))
 
 
 (: make-cdf : (case-> (Real           -> (CDF Real))
@@ -165,14 +163,16 @@
                           (define inv-F
                             (case ν
                               [(1) (λ ([p : Real])
-                                     (fl (cast (tan (* pi (- p 0.5))) Real)))]
+                                     (fltan (* pi (fl- (fl p) 0.5))))]
                               [(2) (λ ([p : Real])
-                                     (define α (* 4. p (- 1. p)))
-                                     (fl (cast (* 2. (- p 0.5) (sqrt (/ 2 α))) Real)))]
+                                     (let ([p (fl p)])
+                                       (define α (fl* 4. p (fl- 1. p)))
+                                       (* 2. (fl- p 0.5) (flsqrt (fl/ 2. α)))))]
                               [(4) (λ ([p : Real])
-                                     (define α (* 4. p (- 1. p)))
-                                     (define q (/ (cos (/ (acos (sqrt α)) 3.)) (sqrt α)))
-                                     (fl (cast (* (sgn (- p 0.5)) 2. (sqrt (- q 1.))) Real)))]
+                                     (let ([p (fl p)])
+                                       (define α (fl* 4. p (fl- 1. p)))
+                                       (define q (fl/ (flcos (fl/ (flacos (flsqrt α)) 3.)) (flsqrt α)))
+                                       (fl* (flsgn (fl- p 0.5)) 2. (flsqrt (fl- q 1.)))))]
                               [else (λ ([p : Real]) 0.0)])) ; happy type checking
                           (λ ([p : Real] [log? #f] [1-p? #f]) ; TODO ignored for now
                             (case p
@@ -234,8 +234,8 @@
                                   (λ (i)
                                     (define X  (flvector-ref Xs  i))
                                     (define X² (flvector-ref X²s i))
-                                    (define x (/ X (sqrt (/ X² ν))))
-                                    (fl (cast (+ (* σ x) μ) Real))))])]))
+                                    (define x  (fl/ X (flsqrt (fl/ X² (fl ν)))))
+                                    (fl+ (fl* (fl σ) x) (fl μ))))])]))
 
 ;;;
 ;;; Tests
