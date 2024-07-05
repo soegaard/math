@@ -5,12 +5,13 @@
          "../normal-dist.rkt"
          "../gamma-dist.rkt"         
          "../../../flonum.rkt"
+         "../dist-struct.rkt"
          "normal-random.rkt")
 
 (provide (rename-out [make-pdf         make-student-t-pdf]
                      [make-cdf         make-student-t-cdf]
                      [make-inverse-cdf make-student-t-inverse-cdf])
-         sample-student-t)
+         flstudent-t-sample)
                      
 
 #;(require racket/performance-hint
@@ -94,49 +95,56 @@
   ;   #t means regularized 
   (beta-inc a b z #f #t))
   
-(: make-pdf : (case-> (Real           -> (-> Real Flonum))
-                      (Real Real Real -> (-> Real Flonum))))
+(: make-pdf : (case-> (Real           -> (PDF Real))
+                      (Real Real Real -> (PDF Real))))
 ; TODO: check ν>0
 (define make-pdf
   (case-lambda
     ; X ~ t(ν)
     [(ν)     (define proportionality-constant (/ 1. (* (sqrt ν) (beta 0.5 (/ ν 2.)))))
-             (: pdf (-> Real Flonum))
-             (define (pdf x)
+             (: pdf : (PDF Real))             
+             (define (pdf x [log? #f])
                (define base (/ ν (+ ν (* x x))))
                (define expo (/ (+ 1. ν) 2.))         
-               (fl (cast (* proportionality-constant (expt base expo)) Real)))
+               (define p (fl (cast (* proportionality-constant (expt base expo)) Real)))               
+               (if log? (fllog p) p))             
              pdf]
     ; Y ~ σX+μ
     [(μ σ ν) (define f (make-pdf ν))
-             (λ (y)
+             (λ (y [log? #f])
                (define x (/ (- y μ) σ))
-               (/ (f x) σ))]))
+               (define p (/ (f x) σ))
+               (if log? (fllog p) p))]))
 
 
-(: make-cdf : (case-> (Real           -> (-> Real Flonum))
-                      (Real Real Real -> (-> Real Flonum))))
+(: make-cdf : (case-> (Real           -> (CDF Real))
+                      (Real Real Real -> (CDF Real))))
 (define make-cdf
   (case-lambda
     ; X ~ t(ν)
     [(ν)     (define ν/2 (/ ν 2))
              (: sub (Real -> Real))
              (define (sub x) (/ ν (+ (* x x) ν)))
-             (: cdf (Real -> Flonum))
-             (define (cdf x)
+             (: cdf : (CDF Real))
+             (define (cdf x [log? #f] [1-p? #f])
+               (define p 
+                 (cond
+                   ; the distribution is symmetrical around x=0
+                   [(= x 0.) 0.5]
+                   ; reduce to the case x>0
+                   [(< x 0.) (- 1. (cdf (- x)))]
+                   ; general case
+                   [else     (- 1. (* 0.5 (beta-regularized (sub x) ν/2 0.5)))]))
                (cond
-                 ; the distribution is symmetrical around x=0
-                 [(= x 0.) 0.5]
-                 ; reduce to the case x>0
-                 [(< x 0.) (- 1. (cdf (- x)))]
-                 ; general case
-                 [else     (- 1. (* 0.5 (beta-regularized (sub x) ν/2 0.5)))]))
+                 [1-p? (if log? (fllog (- 1. p)) (- 1. p))]
+                 [log? (fllog p)]                 
+                 [else p]))
              cdf]
     ; Y ~ σX+μ
     [(μ σ ν) (define F (make-cdf ν))
-             (λ (y)
+             (λ (y [log? #f] [1-p? #f])
                (define x (/ (- y μ) σ))
-               (F x))]))
+               (F x log? 1-p?))]))
 
 
 (: find-bracket : ((Real -> Real) Real Real  -> (values Real Real)))
@@ -149,14 +157,21 @@
       (values a b)
       (find-bracket h (* 2. a) (* 2. b))))
 
-(: make-inverse-cdf : (case-> (Real           -> (-> Real Flonum))
-                              (Real Real Real -> (-> Real Flonum))))
+
+;; (define-type (Inverse-CDF Out)
+;;   (case-> (Real -> Out)
+;;           (Real Any -> Out)
+;;           (Real Any Any -> Out)))
+
+(: make-inverse-cdf : (case-> (Real           -> (Inverse-CDF Flonum))
+                              (Real Real Real -> (Inverse-CDF Flonum))))
 (define make-inverse-cdf
   (case-lambda
     ; X ~ t(ν)
     [(ν)     (case ν
                ; special cases
-               [(1 2 4)   (: inv-F : (Real -> Flonum))
+               ; TODO reenable special cases
+               #;[(1 2 4)   (: inv-F : (Real -> Flonum))
                           (define inv-F
                            (case ν
                              [(1) (λ ([p : Real])
@@ -176,7 +191,7 @@
                              [else (inv-F p)]))]
                ; general
                [else (define F (make-cdf ν))
-                     (λ (p)
+                     (λ (p [log? #f] [1-p? #f]) ; TODO ignored for now
                        (cond
                          [(= p 0) -inf.0]
                          [(= p 1) +inf.0]
@@ -190,17 +205,19 @@
                           (flbracketed-root h (fl a) (fl b))]))])]
     ; Y ~ σX+μ
     [(μ σ ν) (define inv-F (make-inverse-cdf ν))
-             (λ (p)
+             (λ (p [log? #f] [1-p? #f]) ; TODO ignored for now
                (define x (inv-F p))
                (define y (+ (* σ x) μ))
                (fl y))]))
 
-(: sample-student-t : (case-> (Real           Integer -> FlVector)
-                              (Real Real Real Integer -> FlVector)))
-(define sample-student-t
+
+
+
+(: flstudent-t-sample : (case-> (Real           Integer -> FlVector)
+                                       (Real Real Real Integer -> FlVector)))
+(define flstudent-t-sample
   (case-lambda
-    ; X ~ t(ν)
-    
+    ; X ~ t(ν)    
     [(ν n) (cond
              [(n . < . 0)  (raise-argument-error 'sample-student-t "Natural" 1 n)]
              [else    
