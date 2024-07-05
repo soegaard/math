@@ -83,7 +83,6 @@
 
 (: make-pdf : (case-> (Real           -> (PDF Real))
                       (Real Real Real -> (PDF Real))))
-; TODO: check ν>0
 (define make-pdf
   (case-lambda
     ; X ~ t(ν)
@@ -158,7 +157,6 @@
     ; X ~ t(ν)
     [(ν)     (case ν
                ; special cases
-               ; TODO reenable special cases
                [(1 2 4)   (: inv-F : (Real -> Flonum))
                           (define inv-F
                             (case ν
