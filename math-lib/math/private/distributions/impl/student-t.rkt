@@ -87,20 +87,24 @@
 (define make-pdf
   (case-lambda
     ; X ~ t(ν)
-    [(ν)     (define proportionality-constant (/ 1. (* (sqrt ν) (beta 0.5 (/ ν 2.)))))
-             (: pdf : (PDF Real))
-             (define (pdf x [log? #f])
-               (define base (/ ν (+ ν (* x x))))
-               (define expo (/ (+ 1. ν) 2.))         
-               (define p (fl (cast (* proportionality-constant (expt base expo)) Real)))               
-               (if log? (fllog p) p))             
-             pdf]
+    [(ν)     (cond
+               [(< ν 0)  (raise-argument-error 'student-t-dist "Positive Real" 0 ν)]
+               [else     (define proportionality-constant (/ 1. (* (sqrt ν) (beta 0.5 (/ ν 2.)))))
+                         (: pdf : (PDF Real))
+                         (define (pdf x [log? #f])
+                           (define base (/ ν (+ ν (* x x))))
+                           (define expo (/ (+ 1. ν) 2.))         
+                           (define p (fl (cast (* proportionality-constant (expt base expo)) Real)))               
+                           (if log? (fllog p) p))
+                         pdf])]
     ; Y ~ σX+μ
-    [(μ σ ν) (define f (make-pdf ν))
-             (λ (y [log? #f])
-               (define x (/ (- y μ) σ))
-               (define p (/ (f x) σ))
-               (if log? (fllog p) p))]))
+    [(μ σ ν) (cond
+               [(< ν 0)  (raise-argument-error 'student-t-dist "Positive Real" 0 ν)]
+               [else     (define f (make-pdf ν))
+                         (λ (y [log? #f])
+                           (define x (/ (- y μ) σ))
+                           (define p (/ (f x) σ))
+                           (if log? (fllog p) p))])]))
 
 
 (: make-cdf : (case-> (Real           -> (CDF Real))

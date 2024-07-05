@@ -31,23 +31,27 @@
   (define student-t-dist
     (case-lambda
       [(ν)     (let ([ν (fl ν)])
-                 (define pdf     (make-student-t-pdf ν))
-                 (define cdf     (make-student-t-cdf ν))
-                 (define inv-cdf (make-student-t-inverse-cdf ν))
-                 (define sample  (case-lambda:
-                                   [()               (unsafe-flvector-ref (flstudent-t-sample ν 1) 0)]
-                                   [([n : Integer])  (flvector->list (flstudent-t-sample ν n))]))
-                 (define median (delay ν))
-                 (student-t-dist-struct pdf sample cdf inv-cdf -inf.0 +inf.0 median 0 1 ν))]
+                 (cond
+                   [(< ν 0) (raise-argument-error 'student-t-dist "Positive Real (ν)" 0 ν)]
+                   [else    (define pdf     (make-student-t-pdf ν))
+                            (define cdf     (make-student-t-cdf ν))
+                            (define inv-cdf (make-student-t-inverse-cdf ν))
+                            (define sample  (case-lambda:
+                                              [()               (unsafe-flvector-ref (flstudent-t-sample ν 1) 0)]
+                                              [([n : Integer])  (flvector->list (flstudent-t-sample ν n))]))
+                            (define median (delay ν))
+                            (student-t-dist-struct pdf sample cdf inv-cdf -inf.0 +inf.0 median 0 1 ν)]))]
       [(μ σ ν) (let ([μ (fl μ)] [σ (fl σ)] [ν (fl ν)])
-                 (define pdf     (make-student-t-pdf μ σ ν))
-                 (define cdf     (make-student-t-cdf μ σ ν))
-                 (define inv-cdf (make-student-t-inverse-cdf μ σ ν))
-                 (define sample  (case-lambda:
-                                   [()               (unsafe-flvector-ref (flstudent-t-sample μ σ ν 1) 0)]
-                                   [([n : Integer])  (flvector->list (flstudent-t-sample μ σ ν n))]))
-                 (define median (delay ν))
-                 (student-t-dist-struct pdf sample cdf inv-cdf -inf.0 +inf.0 median μ σ ν))])))
+                 (cond
+                   [(< ν 0) (raise-argument-error 'student-t-dist "Positive Real (ν)" 2 μ σ ν)]
+                   [else    (define pdf     (make-student-t-pdf μ σ ν))
+                            (define cdf     (make-student-t-cdf μ σ ν))
+                            (define inv-cdf (make-student-t-inverse-cdf μ σ ν))
+                            (define sample  (case-lambda:
+                                              [()               (unsafe-flvector-ref (flstudent-t-sample μ σ ν 1) 0)]
+                                              [([n : Integer])  (flvector->list (flstudent-t-sample μ σ ν n))]))
+                            (define median (delay ν))
+                            (student-t-dist-struct pdf sample cdf inv-cdf -inf.0 +inf.0 median μ σ ν)]))])))
 
 
 ;;;
