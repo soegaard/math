@@ -51,3 +51,21 @@
                                    [([n : Integer])  (flvector->list (flstudent-t-sample μ σ ν n))]))
                  (define median (delay ν))
                  (student-t-dist-struct pdf sample cdf inv-cdf -inf.0 +inf.0 median μ σ ν))])))
+
+
+;;;
+;;; Tests
+;;;
+
+#;(let ()
+  (: nearly-equal? : (Real Real Real -> Boolean))
+  (define (nearly-equal? eps x y)
+    (<= (abs (- x y)) eps))
+
+  (define T (student-t-dist 2))
+  (list "Density - PDF"
+        (list
+         (nearly-equal? (expt 2 -54) (pdf T 1)                                  (/ 1 (* 3 (sqrt 3))))
+         (nearly-equal? (expt 2 -54) (cdf T 1)                                  (+ 1/2 (/ 1 (* 2 (sqrt 3)))))
+         (nearly-equal? (expt 2 -51) (inv-cdf T (+ 1/2 (/ 1 (* 2 (sqrt 3)))))   1))))
+
