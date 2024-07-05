@@ -1,5 +1,4 @@
 #lang typed/racket
-
 (require "../../functions/incomplete-beta.rkt"
          "../../functions/beta.rkt"
          "../normal-dist.rkt"
@@ -13,16 +12,6 @@
                      [make-inverse-cdf make-student-t-inverse-cdf])
          flstudent-t-sample)
                      
-
-#;(require racket/performance-hint
-         
-         )
-
-;; (require (only-in math/special-functions  beta beta-inc)
-;;          (only-in math/flonum             flbracketed-root fl)
-;;          (only-in math/distributions      sample normal-dist gamma-dist)
-;;          (only-in math/statistics         mean variance)) ; for the tests
-
 ;;; Student t distribution
 
 ;; Parameters
@@ -76,14 +65,9 @@
 ; Here I is the regularized incomplete beta function.
 
 
-;; Implementation Notes
-
-; Names:  (student-t-dist              ν)       
-;         (generalized-student-t-dist  μ σ ν)
-; Note: (student-t-dist [μ 0] [σ 1] ν) could be implemented with case-lambda
-
-
-; Type returned:  (ordered-dist Real Flonum)
+;;;
+;;; Implementation
+;;;
 
 
 ; (beta-regularized z a b)
@@ -95,6 +79,8 @@
   ;   #t means regularized 
   (beta-inc a b z #f #t))
   
+
+
 (: make-pdf : (case-> (Real           -> (PDF Real))
                       (Real Real Real -> (PDF Real))))
 ; TODO: check ν>0
@@ -102,7 +88,7 @@
   (case-lambda
     ; X ~ t(ν)
     [(ν)     (define proportionality-constant (/ 1. (* (sqrt ν) (beta 0.5 (/ ν 2.)))))
-             (: pdf : (PDF Real))             
+             (: pdf : (PDF Real))
              (define (pdf x [log? #f])
                (define base (/ ν (+ ν (* x x))))
                (define expo (/ (+ 1. ν) 2.))         
@@ -171,24 +157,24 @@
     [(ν)     (case ν
                ; special cases
                ; TODO reenable special cases
-               #;[(1 2 4)   (: inv-F : (Real -> Flonum))
+               [(1 2 4)   (: inv-F : (Real -> Flonum))
                           (define inv-F
-                           (case ν
-                             [(1) (λ ([p : Real])
-                                    (fl (cast (tan (* pi (- p 0.5))) Real)))]
-                             [(2) (λ ([p : Real])
-                                    (define α (* 4. p (- 1. p)))
-                                    (fl (cast (* 2. (- p 0.5) (sqrt (/ 2 α))) Real)))]
-                             [(4) (λ ([p : Real])
-                                    (define α (* 4. p (- 1. p)))
-                                    (define q (/ (cos (/ (acos (sqrt α)) 3.)) (sqrt α)))
-                                    (fl (cast (* (sgn (- p 0.5)) 2. (sqrt (- q 1.))) Real)))]
-                             [else (λ ([p : Real]) 0.0)])) ; happy type checking
-                         (λ ([p : Real])
-                           (case p
-                             [(0) -inf.0]
-                             [(1) +inf.0]
-                             [else (inv-F p)]))]
+                            (case ν
+                              [(1) (λ ([p : Real])
+                                     (fl (cast (tan (* pi (- p 0.5))) Real)))]
+                              [(2) (λ ([p : Real])
+                                     (define α (* 4. p (- 1. p)))
+                                     (fl (cast (* 2. (- p 0.5) (sqrt (/ 2 α))) Real)))]
+                              [(4) (λ ([p : Real])
+                                     (define α (* 4. p (- 1. p)))
+                                     (define q (/ (cos (/ (acos (sqrt α)) 3.)) (sqrt α)))
+                                     (fl (cast (* (sgn (- p 0.5)) 2. (sqrt (- q 1.))) Real)))]
+                              [else (λ ([p : Real]) 0.0)])) ; happy type checking
+                          (λ ([p : Real] [log? #f] [1-p? #f]) ; TODO ignored for now
+                            (case p
+                              [(0) -inf.0]
+                              [(1) +inf.0]
+                              [else (inv-F p)]))]
                ; general
                [else (define F (make-cdf ν))
                      (λ (p [log? #f] [1-p? #f]) ; TODO ignored for now
