@@ -72,7 +72,7 @@
 
 ; (beta-regularized z a b)
 ;    The regularized incomplete beta function I_z(a,b)
-(: beta-regularized (-> Real Real Real Real))
+(: beta-regularized (-> Real Real Real Flonum))
 (define (beta-regularized z a b) ; a, b > 0  
   ; The arguments for beta-inc
   ;   #f means integrate from 0
@@ -114,22 +114,24 @@
              (define (sub x) (/ ν (+ (* x x) ν)))
              (: cdf : (CDF Real))
              (define (cdf x [log? #f] [1-p? #f])
-               (define p 
-                 (cond
-                   ; the distribution is symmetrical around x=0
-                   [(= x 0.) 0.5]
-                   ; reduce to the case x>0
-                   [(< x 0.) (- 1. (cdf (- x)))]
-                   ; general case
-                   [else     (- 1. (* 0.5 (beta-regularized (sub x) ν/2 0.5)))]))
-               (cond
-                 [1-p? (if log? (fllog (- 1. p)) (- 1. p))]
-                 [log? (fllog p)]                 
-                 [else p]))
+               (let ([x (fl x)])
+                 ; p = P(X<=x)
+                 (define p 
+                   (cond
+                     ; the distribution is symmetrical around x=0
+                     [(= x 0.) 0.5]
+                     ; reduce to the case x>0
+                     [(< x 0.) (fl- 1. (cdf (fl- x)))]
+                     ; general case
+                     [else     (fl- 1. (fl* 0.5 (beta-regularized (sub x) ν/2 0.5)))]))
+                 ; If 1-p? is true, we must compute the upper tail probability P(X>=x).
+                 (define p1 (if 1-p? (fl- 1. p) p))
+                 ; If log? is true, we must compute the log space progability log(p)
+                 (if log? (fllog p1) p1)))
              cdf]
     ; Y ~ σX+μ
     [(μ σ ν) (define F (make-cdf ν))
-             (λ (y [log? #f] [1-p? #f])
+             (λ (y [log? #f] [1-p? #f])               
                (define x (/ (- y μ) σ))
                (F x log? 1-p?))]))
 
@@ -157,44 +159,54 @@
     ; X ~ t(ν)
     [(ν)     (case ν
                ; special cases
-               [(1 2 4)   (: inv-F : (Real -> Flonum))
-                          (define inv-F
+               [(1 2 4)   (: plain-inv-F : (Flonum -> Flonum))
+                          (define plain-inv-F
                             (case ν
-                              [(1) (λ ([p : Real])
-                                     (fltan (* pi (fl- (fl p) 0.5))))]
-                              [(2) (λ ([p : Real])
-                                     (let ([p (fl p)])
-                                       (define α (fl* 4. p (fl- 1. p)))
-                                       (* 2. (fl- p 0.5) (flsqrt (fl/ 2. α)))))]
-                              [(4) (λ ([p : Real])
-                                     (let ([p (fl p)])
-                                       (define α (fl* 4. p (fl- 1. p)))
-                                       (define q (fl/ (flcos (fl/ (flacos (flsqrt α)) 3.)) (flsqrt α)))
-                                       (fl* (flsgn (fl- p 0.5)) 2. (flsqrt (fl- q 1.)))))]
-                              [else (λ ([p : Real]) 0.0)])) ; happy type checking
-                          (λ ([p : Real] [log? #f] [1-p? #f]) ; TODO ignored for now
+                              [(1) (λ (p)
+                                     (fltan (* pi (fl- p 0.5))))]
+                              [(2) (λ (p)
+                                     (define α (fl* 4. p (fl- 1. p)))
+                                     (* 2. (fl- p 0.5) (flsqrt (fl/ 2. α))))]
+                              [(4) (λ (p)
+                                     (define α (fl* 4. p (fl- 1. p)))
+                                     (define q (fl/ (flcos (fl/ (flacos (flsqrt α)) 3.)) (flsqrt α)))
+                                     (fl* (flsgn (fl- p 0.5)) 2. (flsqrt (fl- q 1.))))]
+                              [else (λ (p) 0.0)])) ; happy type checking
+
+                          (: inv-F : Flonum Any Any -> Flonum)
+                          (define inv-F
+                            (λ (p log? 1-p?)
+                              (let* ([p (if log? (flexp p)  p)]
+                                     [p (if 1-p? (fl- 1. p) p)])
+                                (define x  (plain-inv-F p))
+                                x)))
+                          
+                          (λ (p [log? #f] [1-p? #f])
                             (case p
                               [(0) -inf.0]
                               [(1) +inf.0]
-                              [else (inv-F p)]))]
+                              [else (inv-F (fl p) log? 1-p?)]))]
                ; general
                [else (define F (make-cdf ν))
-                     (λ (p [log? #f] [1-p? #f]) ; TODO ignored for now
-                       (cond
-                         [(= p 0) -inf.0]
-                         [(= p 1) +inf.0]
-                         [else
-                          ; a root of F(x)=p is the inverse of F in p
-                          (: h : (Real -> Flonum))
-                          (define (h x) (fl (- (F x) p)))
-                          ; find interval in which the root lies
-                          (define-values (a b) (find-bracket h -1. 1.))
-                          ; find the root
-                          (flbracketed-root h (fl a) (fl b))]))])]
+                     (λ (p [log? #f] [1-p? #f])
+                       (let* ([p (fl p)]
+                              [p (if log? (flexp p)  p)]
+                              [p (if 1-p? (fl- 1. p) p)])
+                         (cond
+                           [(= p 0) -inf.0]
+                           [(= p 1) +inf.0]
+                           [else
+                            ; a root of F(x)=p is the inverse of F in p
+                            (: h : (Real -> Flonum))
+                            (define (h x) (fl (- (F x) p)))
+                            ; find interval in which the root lies
+                            (define-values (a b) (find-bracket h -1. 1.))
+                            ; find the root
+                            (flbracketed-root h (fl a) (fl b))])))])]
     ; Y ~ σX+μ
     [(μ σ ν) (define inv-F (make-inverse-cdf ν))
-             (λ (p [log? #f] [1-p? #f]) ; TODO ignored for now
-               (define x (inv-F p))
+             (λ (p [log? #f] [1-p? #f])
+               (define x (inv-F p log? 1-p?))
                (define y (+ (* σ x) μ))
                (fl y))]))
 
