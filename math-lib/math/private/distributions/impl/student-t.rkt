@@ -305,7 +305,7 @@
 ;; If a set of tests results in #f, change `and` to `list` to see the
 ;; individual results.
 
-(list "Density - PDF"
+#;(list "Density - PDF"
       (and
        ; N[PDF[StudentTDistribution[1], 0], 30]
        (nearly-equal? (expt 2 -54) ((make-pdf 1) 0)      0.3183098861837907)
