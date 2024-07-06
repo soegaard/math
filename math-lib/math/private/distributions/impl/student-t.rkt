@@ -78,7 +78,13 @@
   ;   #f means integrate from 0
   ;   #t means regularized 
   (beta-inc a b z #f #t))
-  
+
+(: log-beta-regularized (-> Flonum Flonum Flonum    Flonum))
+(define (log-beta-regularized z a b) ; a, b > 0
+  ; The arguments for beta-inc
+  ;   #f means integrate from 0
+  ;   #t means regularized 
+  (fllog-beta-inc a b z #f #t))
 
 
 (: make-pdf : (case-> (Real           -> (PDF Real))
@@ -87,22 +93,40 @@
   (case-lambda
     ; X ~ t(ν)
     [(ν)     (let ([ν (fl ν)])
+               
                (define proportionality-constant (fl/ 1. (* (flsqrt ν) (beta 0.5 (fl/ ν 2.)))))
-               (: pdf : (PDF Real))
-               (define (pdf x [log? #f])
+               (: pdf : (Flonum -> Flonum))
+               (define (pdf x)
+                 (define base (fl/ ν (fl+ ν (fl* x x))))
+                 (define expo (fl/ (fl+ 1. ν) 2.))         
+                 (define p    (fl* proportionality-constant (flexpt base expo)))
+                 p)
+
+               (define log-proportionality-constant
+                 (fl- (fl+ (fl* 0.5 (fllog ν)) (fllog-beta 0.5 (fl/ ν 2.)))))
+               (: log-pdf : (Flonum -> Flonum))
+               (define (log-pdf x)
+                 (define base  (fl/ ν (fl+ ν (fl* x x))))
+                 (define expo  (fl/ (fl+ 1. ν) 2.))         
+                 (define log-p (fl+ log-proportionality-constant (fl* expo (fllog base))))
+                 log-p)
+               
+               (: result-pdf : (PDF Real))
+               (define (result-pdf x [log? #f])
                  (let ([x (fl x)])
-                   (define base (fl/ ν (fl+ ν (fl* x x))))
-                   (define expo (fl/ (fl+ 1. ν) 2.))         
-                   (define p (fl* proportionality-constant (flexpt base expo)))               
-                   (if log? (fllog p) p)))
-               pdf)]
+                   (if log? (log-pdf x) (pdf x))))               
+               result-pdf)]
     ; Y ~ σX+μ
     [(μ σ ν) (define f (make-pdf ν))
              (λ (y [log? #f])
-               (define x (/ (- y μ) σ))
-               (define p (/ (f x) σ))
-               (if log? (fllog p) p))]))
-
+               (let ([y (fl y)] [μ (fl μ)] [σ (fl σ)])
+                 (cond
+                   [log? (define x     (fl/ (fl- y μ) σ))
+                         (define log-p (fl- (f x #t) σ))
+                         log-p]
+                   [else (define x     (fl/ (fl- y μ) σ))
+                         (define p     (fl/ (f x) σ))
+                         p])))]))
 
 (: make-cdf : (case-> (Real           -> (CDF Real))
                       (Real Real Real -> (CDF Real))))
@@ -262,7 +286,7 @@
 ;; If a set of tests results in #f, change `and` to `list` to see the
 ;; individual results.
 
-#;(list "Density - PDF"
+(list "Density - PDF"
       (and
        ; N[PDF[StudentTDistribution[1], 0], 30]
        (nearly-equal? (expt 2 -54) ((make-pdf 1) 0)      0.3183098861837907)
@@ -271,7 +295,11 @@
        (nearly-equal? (expt 2 -55) ((make-pdf 2 2 1) 0)  0.07957747154594767)
        (nearly-equal? (expt 2 -55) ((make-pdf 2 2 1) 1)  0.12732395447351627)
        (nearly-equal? (expt 2 -55) ((make-pdf 3 4 5) 0)  0.06892452901798418)
-       (nearly-equal? (expt 2 -55) ((make-pdf 3 4 5) 1)  0.08197963283068663))
+       (nearly-equal? (expt 2 -55) ((make-pdf 3 4 5) 1)  0.08197963283068663)
+       ; Log space
+       ; Note: The left value is actual the precise one. 
+       (nearly-equal? (expt 2 -52) ((make-pdf 2) 1 #t)   (fllog ((make-pdf 2) 1)))       
+       )
       "Cumulative - CDF"
       (and
        ; N[CDF[StudentTDistribution[1], 0], 30]
