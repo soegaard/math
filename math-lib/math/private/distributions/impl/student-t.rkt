@@ -133,13 +133,14 @@
 (define make-cdf
   (case-lambda
     ; X ~ t(ν)
-    [(ν)     (define ν/2 (/ ν 2))
-             (: sub (Real -> Real))
-             (define (sub x) (/ ν (+ (* x x) ν)))
-             (: cdf : (CDF Real))
-             (define (cdf x [log? #f] [1-p? #f])
-               (let ([x (fl x)])
-                 ; p = P(X<=x)
+    [(ν)     (let ([ν (fl ν)])
+               (define ν/2 (fl/ ν 2.))
+
+               (: sub (Flonum -> Flonum))
+               (define (sub x) (fl/ ν (fl+ (fl* x x) ν)))
+
+               (: cdf : (Flonum -> Flonum))
+               (define (cdf x)
                  (define p 
                    (cond
                      ; the distribution is symmetrical around x=0
@@ -148,11 +149,29 @@
                      [(< x 0.) (fl- 1. (cdf (fl- x)))]
                      ; general case
                      [else     (fl- 1. (fl* 0.5 (beta-regularized (sub x) ν/2 0.5)))]))
-                 ; If 1-p? is true, we must compute the upper tail probability P(X>=x).
-                 (define p1 (if 1-p? (fl- 1. p) p))
-                 ; If log? is true, we must compute the log space progability log(p)
-                 (if log? (fllog p1) p1)))
-             cdf]
+                 p)
+
+               (: log-cdf : (Flonum -> Flonum))
+               (define (log-cdf x)
+                 ; log-p = log(P(X<=x))
+                 #;(define log-p 
+                     (cond
+                       ; the distribution is symmetrical around x=0
+                       [(= x 0.) (fllog 0.5)]
+                       ; reduce to the case x>0
+                       [(< x 0.) (fllog (fl- 1. (exp (log-cdf (fl- x)))))]
+                       ; general case
+                       [else     (fllog (fl- 1. (fl* 0.5 (beta-regularized (sub x) ν/2 0.5))))]))
+                 (define log-p (fllog (cdf x)))
+                 log-p)
+               
+               (: result-cdf : (CDF Real))
+               (define (result-cdf x [log? #f] [1-p? #f])
+                 (let* ([x    (fl x)])
+                   (cond
+                     [log? (log-cdf x)]
+                     [else (cdf x)])))
+               result-cdf)]
     ; Y ~ σX+μ
     [(μ σ ν) (define F (make-cdf ν))
              (λ (y [log? #f] [1-p? #f])               
@@ -297,7 +316,8 @@
        (nearly-equal? (expt 2 -55) ((make-pdf 3 4 5) 0)  0.06892452901798418)
        (nearly-equal? (expt 2 -55) ((make-pdf 3 4 5) 1)  0.08197963283068663)
        ; Log space
-       ; Note: The left value is actual the precise one. 
+       ;   For pdf we compute log(p) directly without computing p first.
+       ;   Note: The left value is actual the precise one. 
        (nearly-equal? (expt 2 -52) ((make-pdf 2) 1 #t)   (fllog ((make-pdf 2) 1)))       
        )
       "Cumulative - CDF"
@@ -312,7 +332,12 @@
        ; generalized
        (nearly-equal? (expt 2 -55)  ((make-cdf 1 2 3) -1)  0.19550110947788532)
        (nearly-equal? (expt 2 -55)  ((make-cdf 1 2 3)  0)  0.3257239824240755)
-       (nearly-equal? (expt 2 -55)  ((make-cdf 1 2 3)  1)  0.5))
+       (nearly-equal? (expt 2 -55)  ((make-cdf 1 2 3)  1)  0.5)
+       ; Log space
+       ;   For cdf we compute p first, and the take the logarithm.
+       ;   Is there a better way?
+       (nearly-equal? (expt 2 -52) ((make-cdf 2) 1 #t)   (fllog ((make-cdf 2) 1)))
+       )
       " Inverse Cumulative - Inverse CDF"
       ; Example to get expected result:
       ;   N[InverseCDF[StudentTDistribution[2], 1/10], 30]
