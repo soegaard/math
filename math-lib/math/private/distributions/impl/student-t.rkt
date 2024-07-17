@@ -87,10 +87,8 @@
   (fllog-beta-inc a b z #f #t))
 
 ;; compute (Beta 1/2 a/2) but more accurate if a is integer?
-(: beta1/2 (-> Real Flonum))
-(define (beta1/2 a)
-  ;; inner valid for positive? odd? integers
-  (define (inner [n : Integer]) : (values Real Real)
+;; inner valid for POSITIVE integers
+  (define (beta-inner [n : Integer]) : (values Real Real)
     (if (= n 1) (values 1 1)
         ;; n will be odd, but round to satisfy type-checker
         (let ([n (round (/ (- n 1) 2))])
@@ -106,17 +104,37 @@
                       (set! stp (+ stp 1000))
                       (lp (numerator C) (denominator C) (+ i 1) (+ j 2))))
                 (values (* A e) B))))))
+
+(: beta1/2 (-> Real Flonum))
+(define (beta1/2 a)
   (if (and (integer? a) (< 1 a) (or (exact? a) (< a 111111)))
       ;; if a > 1e6 this starts to take to long
       ;; a ~ 2×a/4 multiplications of exact integers
       (let ([a (exact-round a)])
         (if (even? a)
-            (let*-values ([(A) (- a 1)]
-                          [(b a) (inner A)])
-              (fl (/ (* 2 b) A a)))
-            (let-values ([(a b) (inner a)])
-              (* pi (fl (/ b a))))))
+          (let*-values ([(A) (- a 1)]
+                        [(b a) (beta-inner A)])
+            (fl (/ (* 2 b) A a)))
+          (let-values ([(a b) (beta-inner a)])
+            (* pi (fl (/ b a))))))
       (beta 0.5 (fl/ (fl a) 2.))))
+
+(: logbeta1/2 (-> Real Flonum))
+(define (logbeta1/2 a)
+  (if (and (integer? a) (< 1 a) (or (exact? a) (< a 111111)))
+      (let ([a (exact-round a)])
+        (if (even? a)
+            (let*-values ([(A) (- a 1)]
+                          [(b a) (beta-inner A)])
+              (fllog (fl (/ (* 2 b) A a))))
+            (let-values ([(a b) (beta-inner (exact-round a))])
+              (fllog (* pi (fl (/ b a)))))))
+      (cond
+        [(= a +min.0) 745.1332191019412]
+        ;; log of beta works better in following region,
+        ;; but for 3 to 15 both are bad, and around 6.7 they are terrible
+        [(< 3 a 500) (fllog (beta1/2 a))]
+        [else        (fllog-beta 0.5 (fl/ (fl a) 2.))])))
 
 ;; reimplentation of flexpt1p, but requiring the +1 to be done beforehand in fl2 (B & b)
 ;; and without checking of boundaries (-0.5 < B_b < +inf.0)
@@ -131,10 +149,12 @@
 (define make-pdf
   (case-lambda
     ; X ~ t(ν)
-    [(ν)     (let ([BF (beta1/2 ν)] ;; if (exact? ν) is provided, beta1/2 will be calculated exact,
-                   [ν (fl ν)])      ;;  this can take a long time for big ν
+    [(ν)     (let ([BF (beta1/2 ν)]      ;; if (exact? ν) is provided, beta1/2 will be calculated exact,
+                   [LBF (logbeta1/2 ν)]  ;;  this can take a long time for big ν
+                   [ν (fl ν)])      
 
                (define √ν (flsqrt ν))
+               (define expo (* -.5 (fl+ 1. ν)))
                (define proportionality-constant (fl/ 1. (* √ν BF)))
                (define x-bnd (max 38.8 (flsqrt (fl* ν (fl- (flexp (fl/ (fl* -2. (fllog +min.0)) (fl+ 1. ν))) 1.)))))
 
@@ -163,7 +183,7 @@
                (: pdf4-e (Flonum -> Flonum))
                (define (pdf4-e x)
                  (define base (pdf4~ x))
-                 (fl* proportionality-constant (flexpt1p base (* -.5 (fl+ 1. ν)))))
+                 (fl* proportionality-constant (flexpt1p base expo)))
                (: pdf4-o (Flonum -> Flonum))
                (define (pdf4-o x)
                  (define base (pdf4~ x))
@@ -178,7 +198,7 @@
                (: pdf5-e (Flonum -> Flonum))
                (define (pdf5-e x)
                  (define-values (A a) (pdf5~ x))
-                 (fl* proportionality-constant (fl2expt A a (* -.5 (fl+ 1. ν)))))
+                 (fl* proportionality-constant (fl2expt A a expo)))
                (: pdf5-o (Flonum -> Flonum))
                (define (pdf5-o x)
                  (define-values (A a) (pdf5~ x))
@@ -254,13 +274,55 @@
                    [else standard-flnormal-pdf]))
 
                (define log-proportionality-constant
-                 (fl- (fl+ (fl* 0.5 (fllog ν)) (fllog-beta 0.5 (fl/ ν 2.)))))
+                 (cond
+                   ;(fl/ +max-subnormal.0 2.)
+                   [(< 1.1125369292536007e-308 ν) (fllog proportionality-constant)]
+                    ;; below is not good enough in general, bad if ν -> +inf (300 ulp)
+                    ;; but both above and below are very inacurate in the range 3->15 (5000 ulp)
+                    ;; however this doesn't seem to matter for the final result
+                   [else (fl- (fl* -.5 (fllog ν)) LBF)]))
+               (define lν (fllog ν))
+               (define l√v (fl* 0.5 lν))
+               (define νl√v (fl* 0.5 ν lν))
+               (define lx-bnd (exp (+ 354.891356446692 l√v))) ;; x²/ν < +inf.0
+
+               (: log1 (Flonum -> Flonum))
+               (define (log1 x)
+                 (define base (flexpt+ ν (flexpt x 2.) ν))
+                 (flsum (list νl√v
+                              (fl* -.5 (fllog (fl+ (fl* base ν) (fl* x base x))))
+                              (fl- LBF))))
+               
+               (: log2 (Flonum -> Flonum))
+               (define (log2 x)
+                 (define lx (fl- (fllog x)))
+                 (flsum (list log-proportionality-constant
+                              l√v lx νl√v (fl* ν lx))))
+               
+               (: log3 (Flonum -> Flonum))
+               (define (log3 x)
+                 (fl+ log-proportionality-constant
+                      (fl* -1. expo (fllog (fl/ ν (fl+ ν (flexpt x 2.)))))))
+               
+               (: log6 (Flonum -> Flonum))
+               (define (log6 x)
+                 (fl+ log-proportionality-constant
+                      (fl* expo (fllog1p (fl* (fl/ x ν) x)))))
+               
                (: log-pdf : (Flonum -> Flonum))
-               (define (log-pdf x)
-                 (define base  (fl/ ν (fl+ ν (fl* x x))))
-                 (define expo  (fl/ (fl+ 1. ν) 2.))         
-                 (define log-p (fl+ log-proportionality-constant (fl* expo (fllog base))))
-                 log-p)
+               (define log-pdf
+                 (cond
+                   [(< ν 1)
+                    (λ (x)
+                      (cond
+                        [(< x 1)    (log3 x)]
+                        [(< x 1e77) (log1 x)]
+                        [else       (log2 x)]))]
+                   [else
+                    (λ (x)
+                    (cond
+                      [(< x lx-bnd) (log6 x)]
+                      [else         (log2 x)]))]))
                
                (: result-pdf : (PDF Real))
                (define (result-pdf x [log? #f])
